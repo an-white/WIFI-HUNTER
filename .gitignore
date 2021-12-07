@@ -2,3 +2,4 @@
 extra.py
 get-pip.py
 /.vscode
+/venv/
